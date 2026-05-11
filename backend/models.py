@@ -1,139 +1,133 @@
-# models.py
+# backend/models.py
 
-# Column defines a column in the table
-# Integer, String etc. are the data types for columns
-# ForeignKey links two tables together
-# Text is for long text (like descriptions)
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, Enum
-from sqlalchemy import ForeignKey
-
-# relationship lets us access related data easily
-# e.g. product.category gives us the full category object
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime, Enum, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
-
-# datetime for timestamps
 from datetime import datetime
-
-# We import Base from our database.py
-# Every model MUST inherit from Base
 from database import Base
 
 
-# ─────────────────────────────────────────
-# TABLE 1: Categories
-# ─────────────────────────────────────────
+class User(Base):
+    __tablename__ = "users"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    username      = Column(String(50), nullable=False, unique=True, index=True)
+    password      = Column(String(255), nullable=False)
+    role          = Column(Enum("admin", "viewer"), nullable=False, default="viewer")
+    is_active     = Column(Boolean, default=True)
+    created_at    = Column(DateTime, default=datetime.utcnow)
+
+    activity_logs = relationship("ActivityLog", back_populates="user")
+
+
+class ActivityLog(Base):
+    __tablename__ = "activity_logs"
+
+    id        = Column(Integer, primary_key=True, index=True)
+    action    = Column(String(255), nullable=False)
+    detail    = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    user_id   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user      = relationship("User", back_populates="activity_logs")
+
+
 class Category(Base):
-    # __tablename__ tells SQLAlchemy what to name the table in MySQL
     __tablename__ = "categories"
 
-    # Primary key - unique ID for each category, auto increments (1, 2, 3...)
-    id = Column(Integer, primary_key=True, index=True)
-
-    # name must exist (nullable=False) and must be unique
-    # index=True makes searching by name faster
-    name = Column(String(100), nullable=False, unique=True, index=True)
-
-    # Description is optional (nullable=True is default)
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String(100), nullable=False, unique=True, index=True)
     description = Column(Text, nullable=True)
+    created_at  = Column(DateTime, default=datetime.utcnow)
 
-    # Automatically set to current time when a category is created
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # This is not a column - it's a relationship
-    # It lets us do category.products to get all products in this category
-    # back_populates="category" means Product also knows about this link
-    products = relationship("Product", back_populates="category")
+    products    = relationship("Product", back_populates="category")
 
 
-# ─────────────────────────────────────────
-# TABLE 2: Suppliers
-# ─────────────────────────────────────────
 class Supplier(Base):
     __tablename__ = "suppliers"
 
-    id = Column(Integer, primary_key=True, index=True)
-
-    name = Column(String(100), nullable=False, index=True)
-
-    # Contact details - all optional
-    email = Column(String(100), nullable=True)
-    phone = Column(String(20), nullable=True)
-    address = Column(Text, nullable=True)
-
+    id         = Column(Integer, primary_key=True, index=True)
+    name       = Column(String(100), nullable=False, index=True)
+    email      = Column(String(100), nullable=True)
+    phone      = Column(String(20), nullable=True)
+    address    = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # One supplier can supply many products
-    products = relationship("Product", back_populates="supplier")
+    products   = relationship("Product", back_populates="supplier")
 
 
-# ─────────────────────────────────────────
-# TABLE 3: Products
-# ─────────────────────────────────────────
 class Product(Base):
     __tablename__ = "products"
 
-    id = Column(Integer, primary_key=True, index=True)
-
-    name = Column(String(150), nullable=False, index=True)
-
-    description = Column(Text, nullable=True)
-
-    # Price uses Float for decimal values like 9.99
-    price = Column(Float, nullable=False, default=0.0)
-
-    # Current stock quantity
-    quantity = Column(Integer, nullable=False, default=0)
-
-    # When quantity drops below this number, we show a low stock alert
-    # Default is 10 - meaning alert when less than 10 items remain
+    id                  = Column(Integer, primary_key=True, index=True)
+    name                = Column(String(150), nullable=False, index=True)
+    description         = Column(Text, nullable=True)
+    price               = Column(Float, nullable=False, default=0.0)
+    cost_price          = Column(Float, nullable=True, default=0.0)
+    quantity            = Column(Integer, nullable=False, default=0)
     low_stock_threshold = Column(Integer, nullable=False, default=10)
+    sku                 = Column(String(100), nullable=True, unique=True)
+    created_at          = Column(DateTime, default=datetime.utcnow)
 
-    # SKU = Stock Keeping Unit - a unique code for each product
-    # Like a barcode identifier. e.g. "ELEC-001"
-    sku = Column(String(100), nullable=True, unique=True)
+    category_id  = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    supplier_id  = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # ForeignKey links this column to the id column of categories table
-    # This means every product MUST belong to a category
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
-
-    # Links to suppliers table
-    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
-
-    # These let us do product.category and product.supplier
-    # back_populates connects back to the relationship in Category/Supplier
-    category = relationship("Category", back_populates="products")
-    supplier = relationship("Supplier", back_populates="products")
-
-    # One product can have many transactions
+    category     = relationship("Category", back_populates="products")
+    supplier     = relationship("Supplier", back_populates="products")
     transactions = relationship("Transaction", back_populates="product")
 
+    # One product → many attachments
+    attachments  = relationship("Attachment", back_populates="product",
+                                foreign_keys="Attachment.product_id")
 
-# ─────────────────────────────────────────
-# TABLE 4: Transactions
-# ─────────────────────────────────────────
+
 class Transaction(Base):
     __tablename__ = "transactions"
 
-    id = Column(Integer, primary_key=True, index=True)
-
-    # Enum means this column can ONLY be one of these two values
-    # IN  = stock coming in (new purchase/restock)
-    # OUT = stock going out (sale/usage)
+    id               = Column(Integer, primary_key=True, index=True)
     transaction_type = Column(Enum("IN", "OUT"), nullable=False)
+    quantity         = Column(Integer, nullable=False)
+    note             = Column(Text, nullable=True)
+    created_at       = Column(DateTime, default=datetime.utcnow)
 
-    # How many units were added or removed
-    quantity = Column(Integer, nullable=False)
+    product_id   = Column(Integer, ForeignKey("products.id"), nullable=False)
+    product      = relationship("Product", back_populates="transactions")
 
-    # Optional note about this transaction
-    # e.g. "Restocked from supplier" or "Sold to customer"
-    note = Column(Text, nullable=True)
+    # One transaction → many attachments
+    attachments  = relationship("Attachment", back_populates="transaction",
+                                foreign_keys="Attachment.transaction_id")
 
-    created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Every transaction must be linked to a product
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+# ─────────────────────────────────────────
+# TABLE: Attachments
+# Stores uploaded files on disk
+# Links to either a product OR transaction
+# ─────────────────────────────────────────
+class Attachment(Base):
+    __tablename__ = "attachments"
 
-    # This lets us do transaction.product to get full product details
-    product = relationship("Product", back_populates="transactions")
+    id            = Column(Integer, primary_key=True, index=True)
+
+    # The name we saved on disk (UUID-based to avoid conflicts)
+    filename      = Column(String(255), nullable=False)
+
+    # Full path on server disk
+    filepath      = Column(String(512), nullable=False)
+
+    # What the user originally named the file
+    original_name = Column(String(255), nullable=False)
+
+    # File type — image, pdf, doc, etc.
+    file_type     = Column(String(50), nullable=True)
+
+    # File size in bytes
+    file_size     = Column(Integer, nullable=True)
+
+    uploaded_at   = Column(DateTime, default=datetime.utcnow)
+
+    # nullable=True — attachment belongs to EITHER product OR transaction
+    product_id     = Column(Integer, ForeignKey("products.id"),     nullable=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+
+    product     = relationship("Product",     back_populates="attachments",
+                               foreign_keys=[product_id])
+    transaction = relationship("Transaction", back_populates="attachments",
+                               foreign_keys=[transaction_id])
